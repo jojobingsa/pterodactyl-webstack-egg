@@ -10,7 +10,7 @@
   "description": "All-in-one webhosting egg: Nginx, PHP-FPM 8.4, MariaDB and phpMyAdmin in one Pterodactyl server. Website files live in /home/container/www and MariaDB data in /home/container/mysql.",
   "features": null,
   "docker_images": {
-    "Webstack (replace image URL)": "ghcr.io/replace-me/pterodactyl-webstack:latest"
+    "Webstack": "ghcr.io/jojobingsa/pterodactyl-webstack:latest"
   },
   "file_denylist": [],
   "startup": "/usr/local/bin/ptero-webstack",
