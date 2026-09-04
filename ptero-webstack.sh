@@ -1,6 +1,14 @@
 #!/bin/bash
 set -Eeuo pipefail
 
+# Pterodactyl may start the container with a restricted PATH that omits /usr/sbin.
+# Debian installs mariadbd, php-fpm and nginx there, so make system sbin paths explicit.
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
+
+MARIADBD_BIN="$(command -v mariadbd || command -v mysqld || true)"
+PHP_FPM_BIN="$(command -v php-fpm8.4 || true)"
+NGINX_BIN="$(command -v nginx || true)"
+
 HOME_DIR="/home/container"
 WEBROOT="${HOME_DIR}/www"
 DB_DIR="${HOME_DIR}/mysql"
@@ -38,6 +46,9 @@ validate() {
     [[ "$PMA_PATH" =~ ^[A-Za-z0-9_-]{1,40}$ ]] || fatal "PMA_PATH may only contain A-Z, a-z, 0-9, _ and -"
     [[ "$DB_ROOT_PASSWORD" =~ ^[A-Za-z0-9._@#%+=!-]{8,64}$ ]] || fatal "DB_ROOT_PASSWORD contains unsupported characters or is too short"
     [[ "$DB_PASSWORD" =~ ^[A-Za-z0-9._@#%+=!-]{8,64}$ ]] || fatal "DB_PASSWORD contains unsupported characters or is too short"
+    [[ -n "$MARIADBD_BIN" && -x "$MARIADBD_BIN" ]] || fatal "MariaDB server binary not found (expected mariadbd/mysqld in /usr/sbin)"
+    [[ -n "$PHP_FPM_BIN" && -x "$PHP_FPM_BIN" ]] || fatal "PHP-FPM 8.4 binary not found"
+    [[ -n "$NGINX_BIN" && -x "$NGINX_BIN" ]] || fatal "Nginx binary not found"
 }
 
 cleanup() {
@@ -49,7 +60,7 @@ cleanup() {
         local stored=""
         [[ -f "${HOME_DIR}/.db-root-password" ]] && stored="$(cat "${HOME_DIR}/.db-root-password")"
         if [[ -n "$stored" ]]; then
-            mariadb-admin --protocol=socket --socket="$MYSQL_SOCKET" -uroot -p"$stored" shutdown >/dev/null 2>&1 || true
+            mariadb-admin --no-defaults --protocol=socket --socket="$MYSQL_SOCKET" -uroot -p"$stored" shutdown >/dev/null 2>&1 || true
         fi
     fi
     if [[ -n "${MYSQL_PID}" ]] && kill -0 "$MYSQL_PID" 2>/dev/null; then kill -TERM "$MYSQL_PID" 2>/dev/null || true; fi
@@ -186,14 +197,19 @@ FIRST_INIT=0
 if [[ ! -d "$DB_DIR/mysql" ]]; then
     FIRST_INIT=1
     log "Initializing MariaDB data directory..."
-    mariadb-install-db \
+    mariadb-install-db --no-defaults \
         --datadir="$DB_DIR" \
         --auth-root-authentication-method=normal \
         --skip-test-db >/dev/null
+elif [[ ! -f "${HOME_DIR}/.db-root-password" ]]; then
+    # Recovery for an interrupted first boot: mariadb-install-db may have completed
+    # before the server process started and credentials were written.
+    FIRST_INIT=1
+    log "MariaDB data directory exists but initial setup is incomplete; resuming setup..."
 fi
 
 start_mariadb() {
-    mariadbd \
+    "$MARIADBD_BIN" --no-defaults \
         --datadir="$DB_DIR" \
         --socket="$MYSQL_SOCKET" \
         --pid-file="$MYSQL_PID_FILE" \
@@ -209,7 +225,7 @@ start_mariadb() {
 
 wait_for_mariadb_noauth() {
     for _ in $(seq 1 60); do
-        [[ -S "$MYSQL_SOCKET" ]] && mariadb-admin --protocol=socket --socket="$MYSQL_SOCKET" ping >/dev/null 2>&1 && return 0
+        [[ -S "$MYSQL_SOCKET" ]] && mariadb-admin --no-defaults --protocol=socket --socket="$MYSQL_SOCKET" ping >/dev/null 2>&1 && return 0
         kill -0 "$MYSQL_PID" 2>/dev/null || return 1
         sleep 0.5
     done
@@ -219,7 +235,7 @@ wait_for_mariadb_noauth() {
 wait_for_mariadb_auth() {
     local password="$1"
     for _ in $(seq 1 60); do
-        [[ -S "$MYSQL_SOCKET" ]] && mariadb-admin --protocol=socket --socket="$MYSQL_SOCKET" -uroot -p"$password" ping >/dev/null 2>&1 && return 0
+        [[ -S "$MYSQL_SOCKET" ]] && mariadb-admin --no-defaults --protocol=socket --socket="$MYSQL_SOCKET" -uroot -p"$password" ping >/dev/null 2>&1 && return 0
         kill -0 "$MYSQL_PID" 2>/dev/null || return 1
         sleep 0.5
     done
@@ -228,7 +244,7 @@ wait_for_mariadb_auth() {
 
 if (( FIRST_INIT == 1 )); then
     log "Configuring initial MariaDB users..."
-    mariadbd \
+    "$MARIADBD_BIN" --no-defaults \
         --datadir="$DB_DIR" \
         --socket="$MYSQL_SOCKET" \
         --pid-file="$MYSQL_PID_FILE" \
@@ -238,7 +254,7 @@ if (( FIRST_INIT == 1 )); then
     MYSQL_PID=$!
     wait_for_mariadb_noauth || fatal "MariaDB failed during initial setup"
 
-    mariadb --protocol=socket --socket="$MYSQL_SOCKET" -uroot <<SQL
+    mariadb --no-defaults --protocol=socket --socket="$MYSQL_SOCKET" -uroot <<SQL
 ALTER USER 'root'@'localhost' IDENTIFIED BY '${DB_ROOT_PASSWORD}';
 CREATE USER IF NOT EXISTS 'root'@'127.0.0.1' IDENTIFIED BY '${DB_ROOT_PASSWORD}';
 ALTER USER 'root'@'127.0.0.1' IDENTIFIED BY '${DB_ROOT_PASSWORD}';
@@ -255,7 +271,7 @@ FLUSH PRIVILEGES;
 SQL
     printf '%s' "$DB_ROOT_PASSWORD" > "${HOME_DIR}/.db-root-password"
     chmod 600 "${HOME_DIR}/.db-root-password"
-    mariadb-admin --protocol=socket --socket="$MYSQL_SOCKET" -uroot -p"$DB_ROOT_PASSWORD" shutdown >/dev/null
+    mariadb-admin --no-defaults --protocol=socket --socket="$MYSQL_SOCKET" -uroot -p"$DB_ROOT_PASSWORD" shutdown >/dev/null
     wait "$MYSQL_PID" 2>/dev/null || true
     MYSQL_PID=""
 fi
@@ -268,11 +284,11 @@ start_mariadb
 wait_for_mariadb_auth "$STORED_ROOT_PASSWORD" || fatal "MariaDB failed to start or the stored root password is invalid"
 
 # Keep egg variables authoritative on later starts too.
-if ! mariadb --protocol=socket --socket="$MYSQL_SOCKET" -uroot -p"$STORED_ROOT_PASSWORD" -e "SELECT 1" >/dev/null 2>&1; then
+if ! mariadb --no-defaults --protocol=socket --socket="$MYSQL_SOCKET" -uroot -p"$STORED_ROOT_PASSWORD" -e "SELECT 1" >/dev/null 2>&1; then
     fatal "Stored MariaDB root password no longer works. If you changed it manually, restore .db-root-password or the database password."
 fi
 
-mariadb --protocol=socket --socket="$MYSQL_SOCKET" -uroot -p"$STORED_ROOT_PASSWORD" <<SQL
+mariadb --no-defaults --protocol=socket --socket="$MYSQL_SOCKET" -uroot -p"$STORED_ROOT_PASSWORD" <<SQL
 CREATE USER IF NOT EXISTS 'root'@'127.0.0.1' IDENTIFIED BY '${DB_ROOT_PASSWORD}';
 ALTER USER 'root'@'localhost' IDENTIFIED BY '${DB_ROOT_PASSWORD}';
 ALTER USER 'root'@'127.0.0.1' IDENTIFIED BY '${DB_ROOT_PASSWORD}';
@@ -291,7 +307,7 @@ printf '%s' "$DB_ROOT_PASSWORD" > "${HOME_DIR}/.db-root-password"
 chmod 600 "${HOME_DIR}/.db-root-password"
 
 log "Starting PHP-FPM 8.4..."
-php-fpm8.4 -F -y "$CFG_DIR/php-fpm.conf" &
+"$PHP_FPM_BIN" -F -y "$CFG_DIR/php-fpm.conf" &
 PHP_PID=$!
 
 for _ in $(seq 1 40); do
@@ -302,7 +318,7 @@ done
 [[ -S "$RUN_DIR/php-fpm.sock" ]] || fatal "PHP-FPM socket was not created"
 
 log "Starting Nginx on port ${SERVER_PORT}..."
-nginx -c "$CFG_DIR/nginx/nginx.conf" -g 'daemon off;' &
+"$NGINX_BIN" -c "$CFG_DIR/nginx/nginx.conf" -g 'daemon off;' &
 NGINX_PID=$!
 
 sleep 0.5

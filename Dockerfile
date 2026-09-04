@@ -5,6 +5,7 @@ ARG PHPMYADMIN_VERSION=5.2.3
 
 ENV USER=container \
     HOME=/home/container \
+    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8
 
@@ -32,8 +33,20 @@ COPY phpmyadmin-config.inc.php /opt/phpmyadmin/config.inc.php
 COPY entrypoint.sh /entrypoint.sh
 COPY ptero-webstack.sh /usr/local/bin/ptero-webstack
 
+# Pterodactyl can override PATH at runtime. Put daemon binaries in /usr/local/bin
+# as well, so both old-style direct calls and the robust binary lookup work.
+# The grep assertion intentionally fails the image build if an outdated
+# ptero-webstack.sh is accidentally copied into the image.
 RUN chmod 0755 /entrypoint.sh /usr/local/bin/ptero-webstack \
-    && chmod 0644 /opt/phpmyadmin/config.inc.php
+    && chmod 0644 /opt/phpmyadmin/config.inc.php \
+    && ln -sf /usr/sbin/mariadbd /usr/local/bin/mariadbd \
+    && ln -sf /usr/sbin/nginx /usr/local/bin/nginx \
+    && ln -sf /usr/sbin/php-fpm8.4 /usr/local/bin/php-fpm8.4 \
+    && test -x /usr/local/bin/mariadbd \
+    && test -x /usr/local/bin/nginx \
+    && test -x /usr/local/bin/php-fpm8.4 \
+    && grep -q 'MARIADBD_BIN=' /usr/local/bin/ptero-webstack \
+    && /usr/local/bin/mariadbd --version
 
 USER container
 WORKDIR /home/container

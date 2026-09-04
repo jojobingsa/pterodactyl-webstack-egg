@@ -26,11 +26,14 @@ jobs:
           images: ghcr.io/${{ github.repository_owner }}/pterodactyl-webstack
           tags: |
             type=raw,value=latest
+            type=raw,value=v3
             type=sha
       - uses: docker/build-push-action@v6
         with:
           context: .
           push: true
+          no-cache: true
+          pull: true
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

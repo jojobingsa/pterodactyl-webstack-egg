@@ -22,7 +22,7 @@ Ein Pterodactyl-Egg kann beim Installieren Dateien unter `/home/container` vorbe
 4. Danach existiert das Image als:
    `ghcr.io/DEIN_GITHUB_NAME/pterodactyl-webstack:latest`
 5. In `egg-nginx-php-mariadb-phpmyadmin.json` den Wert
-   `ghcr.io/replace-me/pterodactyl-webstack:latest`
+   `ghcr.io/jojobingsa/pterodactyl-webstack-egg:latest`
    durch deine Image-URL ersetzen.
 6. Egg im Pterodactyl Admin Panel importieren.
 
@@ -74,3 +74,24 @@ $pdo = new PDO(
 MariaDB bindet nur an `127.0.0.1:3306` im Container. Der Datenbank-Port wird dadurch nicht öffentlich freigegeben. phpMyAdmin ist hingegen über den Web-Port erreichbar; ändere deshalb `PMA_PATH` auf einen schwer erratbaren Pfad oder setze `PMA_ENABLED=0`, wenn du es nicht brauchst.
 
 Für eine öffentliche Website sollte TLS/HTTPS vor dem Pterodactyl-Port über einen Reverse Proxy (z. B. Host-Nginx, Caddy oder Cloudflare Tunnel) terminieren.
+
+
+## v3 PATH / stale-script verification
+
+This revision also publishes `:v3` and deliberately disables the Docker build
+cache. The image build fails if `/usr/local/bin/ptero-webstack` does not contain
+the `MARIADBD_BIN` lookup.
+
+After GitHub Actions succeeds, verify the image with:
+
+```bash
+docker pull ghcr.io/jojobingsa/pterodactyl-webstack:v3
+docker run --rm --entrypoint /bin/bash ghcr.io/jojobingsa/pterodactyl-webstack:v3 -lc \
+  'echo "$PATH"; command -v mariadbd; mariadbd --version; grep -n "MARIADBD_BIN" /usr/local/bin/ptero-webstack | head'
+```
+
+For the first test, point the Pterodactyl egg at:
+
+`ghcr.io/jojobingsa/pterodactyl-webstack:v3`
+
+This avoids ambiguity about an older `latest` manifest.
