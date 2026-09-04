@@ -1,0 +1,132 @@
+{
+  "_comment": "DO NOT EDIT: FILE GENERATED FOR PTERODACTYL PANEL - PTERODACTYL.IO",
+  "meta": {
+    "version": "PTDL_v2",
+    "update_url": null
+  },
+  "exported_at": "2026-09-04T23:06:00+02:00",
+  "name": "Nginx + PHP 8.4 + MariaDB + phpMyAdmin",
+  "author": "jonas@example.invalid",
+  "description": "All-in-one webhosting egg: Nginx, PHP-FPM 8.4, MariaDB and phpMyAdmin in one Pterodactyl server. Website files live in /home/container/www and MariaDB data in /home/container/mysql.",
+  "features": null,
+  "docker_images": {
+    "Webstack (replace image URL)": "ghcr.io/replace-me/pterodactyl-webstack:latest"
+  },
+  "file_denylist": [],
+  "startup": "/usr/local/bin/ptero-webstack",
+  "config": {
+    "files": "{}",
+    "startup": "{\n  \"done\": \"Web stack ready\"\n}",
+    "logs": "{}",
+    "stop": "^C"
+  },
+  "scripts": {
+    "installation": {
+      "script": "#!/bin/bash\nset -e\nmkdir -p /mnt/server/www /mnt/server/mysql\nif [ ! -f /mnt/server/www/index.php ] && [ ! -f /mnt/server/www/index.html ]; then\ncat > /mnt/server/www/index.php <<'PHP'\n<?php\nheader('Content-Type: text/plain; charset=UTF-8');\necho \"Installation abgeschlossen. Der Webstack wird beim ersten Start initialisiert.\\n\";\nPHP\nfi\necho \"Webstack files prepared.\"",
+      "container": "ghcr.io/pterodactyl/installers:debian",
+      "entrypoint": "bash"
+    }
+  },
+  "variables": [
+    {
+      "name": "MariaDB Root Password",
+      "description": "Root password for the MariaDB instance inside this Pterodactyl server.",
+      "env_variable": "DB_ROOT_PASSWORD",
+      "default_value": "ChangeMeRoot123!",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|min:8|max:64|regex:/^[A-Za-z0-9._@#%+=!-]+$/",
+      "field_type": "text"
+    },
+    {
+      "name": "Database Name",
+      "description": "Database created automatically on startup.",
+      "env_variable": "DB_NAME",
+      "default_value": "website",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:32|regex:/^[A-Za-z0-9_]+$/",
+      "field_type": "text"
+    },
+    {
+      "name": "Database User",
+      "description": "Non-root database user for your website.",
+      "env_variable": "DB_USER",
+      "default_value": "website",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:32|regex:/^[A-Za-z0-9_]+$/",
+      "field_type": "text"
+    },
+    {
+      "name": "Database Password",
+      "description": "Password for the website database user.",
+      "env_variable": "DB_PASSWORD",
+      "default_value": "ChangeMeApp123!",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|min:8|max:64|regex:/^[A-Za-z0-9._@#%+=!-]+$/",
+      "field_type": "text"
+    },
+    {
+      "name": "phpMyAdmin Enabled",
+      "description": "1 enables phpMyAdmin, 0 disables it.",
+      "env_variable": "PMA_ENABLED",
+      "default_value": "1",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|boolean",
+      "field_type": "text"
+    },
+    {
+      "name": "phpMyAdmin URL Path",
+      "description": "phpMyAdmin will be available at /<this value>/. Change this from the default for better protection.",
+      "env_variable": "PMA_PATH",
+      "default_value": "phpmyadmin",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:40|regex:/^[A-Za-z0-9_-]+$/",
+      "field_type": "text"
+    },
+    {
+      "name": "PHP Memory Limit",
+      "description": "PHP memory_limit, e.g. 256M or 512M.",
+      "env_variable": "PHP_MEMORY_LIMIT",
+      "default_value": "256M",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:10|regex:/^[0-9]+[MG]$/",
+      "field_type": "text"
+    },
+    {
+      "name": "Upload Max Filesize",
+      "description": "PHP upload_max_filesize and Nginx upload allowance.",
+      "env_variable": "UPLOAD_MAX_FILESIZE",
+      "default_value": "128M",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:10|regex:/^[0-9]+[MG]$/",
+      "field_type": "text"
+    },
+    {
+      "name": "POST Max Size",
+      "description": "PHP post_max_size and Nginx client_max_body_size.",
+      "env_variable": "POST_MAX_SIZE",
+      "default_value": "128M",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:10|regex:/^[0-9]+[MG]$/",
+      "field_type": "text"
+    },
+    {
+      "name": "PHP Max Execution Time",
+      "description": "Maximum PHP execution time in seconds.",
+      "env_variable": "MAX_EXECUTION_TIME",
+      "default_value": "120",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|integer|between:1,3600",
+      "field_type": "text"
+    }
+  ]
+}
